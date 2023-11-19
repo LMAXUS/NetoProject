@@ -4,25 +4,25 @@ class Post(
     override val fromId: Int,
     override var text: String,
     override var deleted: Boolean = false,
-    override val comments: MutableList<Comment> = mutableListOf(),
+    val comments: MessageService<Comment> = MessageService.init<Comment>(),
     var attachments: Array<Attachment> = emptyArray<Attachment>(), // Вложения разного рода
     val ownProp1: String = "Post",
     val ownProp2: String = "",
     val ownProp3: String = "",
 ): MessageInterface {
-    override fun copy(message: MessageInterface, newId: Int ?, newDate: Long ?): MessageInterface {
-        val postToCopy = message as Post
+
+    override fun copy(newId: Int ?, newDate: Long ?): MessageInterface {
         return Post(
-            newId ?: message.id,
-            newDate ?: message.date,
-            postToCopy.fromId,
-            postToCopy.text,
-            postToCopy.deleted,
-            postToCopy.comments,
-            postToCopy.attachments.copyOf(),
-            postToCopy.ownProp1,
-            postToCopy.ownProp2,
-            postToCopy.ownProp3
+            newId ?: this.id,
+            newDate ?: this.date,
+            this.fromId,
+            this.text,
+            this.deleted,
+            MessageService.init<Comment>(this.comments),
+            this.attachments.copyOf(),
+            this.ownProp1,
+            this.ownProp2,
+            this.ownProp3
         ) as MessageInterface
     }
 }

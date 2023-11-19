@@ -1,18 +1,7 @@
 import java.lang.RuntimeException
 
 class MessageNotFoundException(message: String): RuntimeException(message)
-class CommentNotFoundException(message: String): RuntimeException(message)
-//class InvalidReportReasonException(message: String): RuntimeException(message)
-
-data class Comment(
-    val id: Int, // Идентификатор комментария
-    val date: Long, // Дата публикации в формате unixtime
-    val messageId: Int, //Идентификатор сообщения, к которому относится комментарий
-    val fromId: Int, // Идентификатор автора сообщения
-    var text: String, // Текст сообщения
-    val replyToComment: Int ? = null, //Идентификатор комментария, к которому относится комментарий
-    var deleted: Boolean = false, // Сообщение удалено
-)
+class MessageDeletedException(message: String): RuntimeException(message)
 
 interface MessageInterface {
     val id: Int // Идентификатор сообщения
@@ -20,32 +9,45 @@ interface MessageInterface {
     val fromId: Int // Идентификатор автора сообщения
     var text: String // Текст сообщения
     var deleted: Boolean // Сообщение удалено
-    val comments: MutableList<Comment>
 
     //Функция возвращает копию объекта сообщения,
     // при необходимости (если переданы параметры) меняя id и дату создания
-    fun copy(message: MessageInterface, newId: Int ? = null, newDate: Long ? = null): MessageInterface
+    fun copy(newId: Int ? = null, newDate: Long ? = null): MessageInterface
 }
 
-class MessageService <T: MessageInterface> {
+open class MessageService <T: MessageInterface> (prototype: MessageService <T> ? = null, serviceName: String? = null){
 
-    private val messages: MutableList<T> = mutableListOf()
-
-    private fun messageExistsException(id: Int){
-        try{
-            messages[id]
-        } catch (e: IndexOutOfBoundsException){
-            throw MessageNotFoundException("Попытка обратиться к сообщению с несуществующим id = $id")
+    companion object{
+        inline fun <reified T: MessageInterface> init(prototype: MessageService <T> ? = null): MessageService<T> {
+            return MessageService<T>(prototype, T::class.simpleName)
         }
     }
 
-    private fun messageDeletedException(id: Int){
-        if(messages[id].deleted == true) throw MessageNotFoundException("Попытка обратиться к удаленному сообщению")
+    private var serviceName: String = "MessageInterface"
+    private var messages: MutableList<T> = mutableListOf()
+    private var messageCounter: Int = 0
+
+    init {
+        if(serviceName != null) this.serviceName = serviceName
+        if(prototype != null) {
+            prototype.get().forEach{
+                messages.add(it.copy() as T)
+            }
+            messageCounter = prototype.last()
+        }
+    }
+
+    private fun message(id: Int): T{
+        val message = messages.find { it.id == id }
+        return message ?: throw MessageNotFoundException("Ошибка сервиса \"$serviceName\": попытка обратиться к сообщению с несуществующим id = $id")
+    }
+
+    fun last(): Int{
+        return messageCounter
     }
 
     fun getById(id: Int): T{
-        messageExistsException(id)
-        return messages[id]
+        return message(id)
     }
 
     fun get(): MutableList<T>{
@@ -53,90 +55,28 @@ class MessageService <T: MessageInterface> {
     }
 
     fun add(message: T): Int{
-        val newId = messages.size
-        messages.add(newId, message.copy(message, newId, System.currentTimeMillis()) as T)
+        val newId = messageCounter++
+        messages.add(message.copy(newId, System.currentTimeMillis()) as T)
         return newId
     }
 
     fun edit(id: Int, text: String): Boolean{
-        messageExistsException(id)
-        messages[id].text = text
+        val message = message(id)
+        if(message.deleted) throw MessageDeletedException("Ошибка сервиса \"$serviceName\": попытка редактирования удаленного сообщения с id = $id")
+        message(id).text = text
         return true
     }
 
     fun delete(id: Int): Boolean{
-        messageExistsException(id)
-        messages[id].deleted = true
-        return messages[id].deleted
+        val message = message(id)
+        message.deleted = true
+        return message.deleted
     }
 
     fun restore(id: Int): Boolean{
-        messageExistsException(id)
-        messages[id].deleted = false
-        return messages[id].deleted
+        val message = message(id)
+        message.deleted = false
+        return message.deleted
     }
-
-    private fun commentExistsException(messageId: Int, commentId: Int){
-        messageExistsException(messageId)
-        try{
-            messages[messageId].comments[commentId]
-        } catch (e: IndexOutOfBoundsException){
-            throw CommentNotFoundException("Попытка обратиться к комментарию с несуществующим id = $commentId")
-        }
-    }
-
-    fun getCommentById(messageId: Int, commentId: Int): Comment{
-        messageExistsException(messageId)
-        messageDeletedException(messageId)
-        commentExistsException(messageId, commentId)
-        return messages[messageId].comments[commentId]
-    }
-
-    fun getComments(messageId: Int): MutableList<Comment>{
-        messageExistsException(messageId)
-        messageDeletedException(messageId)
-        return messages[messageId].comments.toMutableList()
-    }
-
-    fun addComment(messageId: Int, fromId: Int, text: String, replyToComment: Int ? = null): Int{
-        messageExistsException(messageId)
-        messageDeletedException(messageId)
-        val newId = messages[messageId].comments.size
-        messages[messageId].comments.add(
-            Comment(
-                newId,
-                System.currentTimeMillis(),
-                messageId,
-                fromId,
-                text,
-                replyToComment
-            )
-        )
-        return newId
-    }
-
-    fun editComment(messageId: Int, commentId: Int, text: String): Boolean{
-        messageExistsException(messageId)
-        messageDeletedException(messageId)
-        commentExistsException(messageId, commentId)
-        messages[messageId].comments[commentId].text = text
-        return true
-    }
-
-    fun deleteComment(messageId: Int, commentId: Int): Boolean{
-        messageExistsException(messageId)
-        messageDeletedException(messageId)
-        commentExistsException(messageId, commentId)
-        messages[messageId].comments[commentId].deleted = true
-        return messages[messageId].comments[commentId].deleted
-    }
-
-    fun restoreComment(messageId: Int, commentId: Int): Boolean{
-        messageExistsException(messageId)
-        messageDeletedException(messageId)
-        commentExistsException(messageId, commentId)
-        messages[messageId].comments[commentId].deleted = false
-        return messages[messageId].comments[commentId].deleted
-    }
-
 }
+
